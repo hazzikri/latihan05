@@ -1,0 +1,62 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - master 
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code 
+      uses: actions/checkout@v4
+
+    # Langkah 1: Install semua yang dibutuhkan
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.x'
+
+    - name: Install library
+      run: |
+        pip install beautifulsoup4 pytest
+
+    # Langkah 2: JALANKAN TES
+    # Jika tes ini gagal, proses deploy akan berhenti.
+    - name: Run unit tests
+      run: pytest unit-test.py
+
+    # Langkah 3: Deploy ke Server
+    - name: Deploy to Server
+      env:
+        DEPLOY_SERVER: ${{ secrets.DEPLOY_SERVER_IP }}
+        DEPLOY_USER: ${{ secrets.DEPLOY_USER_UBUNTU }}
+        SSH_KEY: ${{ secrets.SSH_KEY_UBUNTU }}
+      run: |
+        # Menginstall SSH Client jika belum ada
+        sudo apt-get update && sudo apt-get install -y openssh-client
+        
+        # Menyiapkan kunci SSH
+        mkdir -p ~/.ssh
+        echo "$SSH_KEY" | tr -d '\r' > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+        
+        # Menambahkan server ke known_hosts agar tidak ada prompt interaktif
+        ssh-keyscan -t rsa $DEPLOY_SERVER >> ~/.ssh/known_hosts
+
+        # copy nginx.conf
+        scp -i ~/.ssh/id_rsa ./nginx.conf $DEPLOY_USER@$DEPLOY_SERVER:/tmp/nginx.conf
+
+        #copy file deploy.sh 
+        scp -i ~/.ssh/id_rsa ./deploy.sh $DEPLOY_USER@$DEPLOY_SERVER:/tmp/deploy.sh
+
+        #jalankan skrip deploy di server
+        ssh -i ~/.ssh/id_rsa $DEPLOY_USER@$DEPLOY_SERVER 'bash /tmp/deploy.sh'
+
+        #Salin file website
+        scp -i ~/.ssh/id_rsa -r ./website/* $DEPLOY_USER@$DEPLOY_SERVER:/var/www/html/
+        
+
+        
